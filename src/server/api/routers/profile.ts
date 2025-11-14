@@ -299,6 +299,40 @@ export const profileRouter = createTRPCRouter({
         data: input,
       });
     }),
+
+  // Admin: Update department
+  updateDepartment: protectedProcedure
+    .input(
+      z.object({
+        id: z.string(),
+        name: z.string().min(1, "Department name is required").optional(),
+        domain: z.string().min(1, "Domain is required").optional(),
+      })
+    )
+    .mutation(async ({ ctx, input }) => {
+      const { id, ...updateData } = input;
+      return ctx.db.department.update({
+        where: { id },
+        data: updateData,
+      });
+    }),
+
+  // Admin: Delete department
+  deleteDepartment: protectedProcedure
+    .input(z.object({ id: z.string() }))
+    .mutation(async ({ ctx, input }) => {
+      // Check for users in department before deleting
+      const userCount = await ctx.db.user.count({
+        where: { departmentId: input.id },
+      });
+      if (userCount > 0) {
+        throw new Error("Cannot delete department with assigned users");
+      }
+      return ctx.db.department.delete({
+        where: { id: input.id },
+      });
+    }),
+
   // Setup new domain and complete profile (for new domains)
   setupNewDomain: protectedProcedure
     .input(

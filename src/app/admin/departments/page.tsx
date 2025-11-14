@@ -28,6 +28,12 @@ function DepartmentManagement() {
   const [newDepartmentDomain, setNewDepartmentDomain] = useState("");
   const [isCreating, setIsCreating] = useState(false);
 
+  // Add state for editing/deleting departments
+  const [editingDepartmentId, setEditingDepartmentId] = useState<string | null>(null);
+  const [editingDepartmentName, setEditingDepartmentName] = useState<string>("");
+  const [editingDepartmentDomain, setEditingDepartmentDomain] = useState<string>("");
+  const [deletingDepartmentId, setDeletingDepartmentId] = useState<string | null>(null);
+
   // Get current user profile to check permissions
   const { data: userProfile } = api.profile.getCurrentProfile.useQuery();
   
@@ -51,6 +57,29 @@ function DepartmentManagement() {
     onError: (error) => {
       alert(`Failed to create department: ${error.message}`);
       setIsCreating(false);
+    },
+  });
+
+  const updateDepartmentMutation = api.profile.updateDepartment.useMutation({
+    onSuccess: () => {
+      setEditingDepartmentId(null);
+      setEditingDepartmentName("");
+      setEditingDepartmentDomain("");
+      void refetch();
+    },
+    onError: (error) => {
+      alert(`Failed to update department: ${error.message}`);
+    },
+  });
+
+  const deleteDepartmentMutation = api.profile.deleteDepartment.useMutation({
+    onSuccess: () => {
+      setDeletingDepartmentId(null);
+      void refetch();
+    },
+    onError: (error) => {
+      alert(`Failed to delete department: ${error.message}`);
+      setDeletingDepartmentId(null);
     },
   });
 
@@ -204,12 +233,67 @@ function DepartmentManagement() {
                             {new Date(department.createdAt).toLocaleDateString()}
                           </td>
                           <td className="whitespace-nowrap px-6 py-4 text-sm">
-                            <button className="text-blue-400 hover:text-blue-300 mr-2">
-                              Edit
-                            </button>
-                            <button className="text-red-400 hover:text-red-300">
-                              Delete
-                            </button>
+                            {editingDepartmentId === department.id ? (
+                              <>
+                                <input
+                                  type="text"
+                                  value={editingDepartmentName}
+                                  onChange={(e) => setEditingDepartmentName(e.target.value)}
+                                  className="rounded border border-white/20 bg-black/85 px-2 py-1 text-white mr-2"
+                                />
+                                <select
+                                  value={editingDepartmentDomain}
+                                  onChange={(e) => setEditingDepartmentDomain(e.target.value)}
+                                  className="rounded border border-white/20 bg-black/85 px-2 py-1 text-white mr-2"
+                                >
+                                  {domains?.map((d) => (
+                                    <option key={d.id} value={d.name}>{d.name}</option>
+                                  ))}
+                                </select>
+                                <button
+                                  onClick={() => updateDepartmentMutation.mutate({
+                                    id: department.id,
+                                    name: editingDepartmentName,
+                                    domain: editingDepartmentDomain,
+                                  })}
+                                  className="text-green-400 hover:text-green-300 mr-2"
+                                  disabled={updateDepartmentMutation.isPending}
+                                >
+                                  Save
+                                </button>
+                                <button
+                                  onClick={() => setEditingDepartmentId(null)}
+                                  className="text-gray-400 hover:text-gray-300"
+                                >
+                                  Cancel
+                                </button>
+                              </>
+                            ) : (
+                              <>
+                                <button
+                                  className="text-blue-400 hover:text-blue-300 mr-2"
+                                  onClick={() => {
+                                    setEditingDepartmentId(department.id);
+                                    setEditingDepartmentName(department.name);
+                                    setEditingDepartmentDomain(department.domain);
+                                  }}
+                                >
+                                  Edit
+                                </button>
+                                <button
+                                  className="text-red-400 hover:text-red-300"
+                                  onClick={() => {
+                                    if (confirm(`Are you sure you want to delete department '${department.name}'? This cannot be undone.`)) {
+                                      setDeletingDepartmentId(department.id);
+                                      deleteDepartmentMutation.mutate({ id: department.id });
+                                    }
+                                  }}
+                                  disabled={deleteDepartmentMutation.isPending}
+                                >
+                                  Delete
+                                </button>
+                              </>
+                            )}
                           </td>
                         </tr>
                       ))}

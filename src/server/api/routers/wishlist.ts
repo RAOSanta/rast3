@@ -909,4 +909,58 @@ export const wishlistRouter = createTRPCRouter({  // Get the current user's assi
 
     return reports;
   }),
+
+  // Get reports for wishlists owned by current user
+  getMyWishlistReports: protectedProcedure.query(async ({ ctx }) => {
+    const ownerId = ctx.session.user.id;
+
+    const reports = await ctx.db.wishlistReport.findMany({
+      where: {
+        wishlistAssignment: {
+          wishlistOwnerId: ownerId,
+        },
+      },
+      include: {
+        user: {
+          select: { id: true, name: true, firstName: true, lastName: true },
+        },
+        wishlistAssignment: {
+          select: {
+            id: true,
+            wishlistOwnerId: true,
+          },
+        },
+      },
+      orderBy: { reportedAt: 'desc' },
+    });
+
+    return reports;
+  }),
+
+  // Allow wishlist owner to resolve (delete) a specific report
+  resolveReport: protectedProcedure
+    .input(z.object({ reportId: z.string() }))
+    .mutation(async ({ ctx, input }) => {
+      const ownerId = ctx.session.user.id;
+
+      // Verify the report belongs to one of the current user's wishlists
+      const report = await ctx.db.wishlistReport.findUnique({
+        where: { id: input.reportId },
+        select: {
+          id: true,
+          wishlistAssignment: {
+            select: { wishlistOwnerId: true },
+          },
+        },
+      });
+
+      if (!report || report.wishlistAssignment.wishlistOwnerId !== ownerId) {
+        throw new TRPCError({ code: 'FORBIDDEN', message: 'Not authorized to resolve this report' });
+      }
+
+      // Use deleteMany to avoid throwing if record already removed by another process
+      await ctx.db.wishlistReport.deleteMany({ where: { id: input.reportId } });
+
+      return { success: true };
+    }),
 });

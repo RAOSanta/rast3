@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useSession } from "next-auth/react";
 import { api, type RouterOutputs } from "~/trpc/react";
 import { Preloader } from "./preloader";
@@ -16,6 +16,7 @@ export function WishlistManager() {
   const [reportType, setReportType] = useState<"NO_ITEMS" | "DOESNT_EXIST" | "NO_ADDRESS" | "OTHER">("NO_ITEMS");
   const [reportDescription, setReportDescription] = useState("");
   const [strangerModal, setStrangerModal] = useState(false);
+  const [showOwnerReportsModal, setShowOwnerReportsModal] = useState(false);
 
   // Check if user has completed profile - only run when authenticated
   const { data: userProfile } = api.profile.getCurrentProfile.useQuery(
@@ -35,6 +36,22 @@ export function WishlistManager() {
     undefined,
     { enabled: shouldShowWishlist }
   );
+
+  // Fetch reports raised against wishlists owned by current user
+  const { data: ownerReports, refetch: refetchOwnerReports } = api.wishlist.getMyWishlistReports.useQuery(undefined, {
+    enabled: !!sessionData?.user,
+  });
+
+  const resolveReportMutation = api.wishlist.resolveReport.useMutation({
+    onSuccess: () => {
+      void refetchOwnerReports();
+      void refetch();
+      void refetchStats();
+    },
+    onError: (err) => {
+      alert(`Failed to resolve report: ${err.message}`);
+    },
+  });
 
   // Mutations - must be called before any conditional returns
   const requestInitial = api.wishlist.requestInitialAssignments.useMutation({
@@ -111,6 +128,13 @@ export function WishlistManager() {
   if (!sessionData?.user) {
     return null; // Don't show anything if not authenticated
   }
+
+  // Show the owner reports modal when the user has reports on their wishlist
+  useEffect(() => {
+    if (ownerReports && ownerReports.length > 0) {
+      setShowOwnerReportsModal(true);
+    }
+  }, [ownerReports]);
 
   const formatReportType = (type: string) => {
     switch (type) {
@@ -622,6 +646,57 @@ export function WishlistManager() {
                   Cancel
                 </button>
               </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Owner Reports Modal: show reports for wishlists owned by current user */}
+      {showOwnerReportsModal && ownerReports && ownerReports.length > 0 && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
+          <div className="bg-white rounded-lg p-6 w-full max-w-2xl">
+            <h3 className="text-xl font-semibold mb-4 text-gray-900">Wishlist Reports</h3>
+            <p className="text-gray-600 mb-4">Someone has reported an issue with one or more of your wishlists. Review the details below and mark resolved when appropriate.</p>
+            <div className="space-y-3 max-h-72 overflow-auto mb-4">
+              {ownerReports.map((r) => (
+                <div key={r.id} className="border rounded p-3 bg-gray-50">
+                  <div className="flex justify-between items-start">
+                    <div>
+                      <div className="text-sm font-medium text-gray-800">{r.user?.name ?? `${r.user?.firstName ?? ''} ${r.user?.lastName ?? ''}`.trim() || 'Anonymous'}</div>
+                      <div className="text-xs text-gray-500">{new Date(r.reportedAt).toLocaleString()}</div>
+                    </div>
+                    <div className="text-xs text-gray-500">{r.reportType}</div>
+                  </div>
+                  {r.description && <div className="mt-2 text-sm text-gray-700">"{r.description}"</div>}
+                  <div className="mt-3 flex gap-2">
+                    <button
+                      onClick={() => {
+                        if (confirm('Mark this report as resolved?')) {
+                          resolveReportMutation.mutate({ reportId: r.id });
+                        }
+                      }}
+                      disabled={resolveReportMutation.isPending}
+                      className="bg-green-600 hover:bg-green-700 disabled:bg-gray-400 text-white py-2 px-3 rounded-lg text-sm font-medium"
+                    >
+                      {resolveReportMutation.isPending ? 'Resolving...' : 'Mark Resolved'}
+                    </button>
+                    <button
+                      onClick={() => setShowOwnerReportsModal(false)}
+                      className="bg-gray-500 hover:bg-gray-600 text-white py-2 px-3 rounded-lg text-sm font-medium"
+                    >
+                      Dismiss
+                    </button>
+                  </div>
+                </div>
+              ))}
+            </div>
+            <div className="text-right">
+              <button
+                onClick={() => setShowOwnerReportsModal(false)}
+                className="bg-gray-300 hover:bg-gray-400 text-gray-800 py-2 px-4 rounded-lg font-medium"
+              >
+                Close
+              </button>
             </div>
           </div>
         </div>
